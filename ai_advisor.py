@@ -1,5 +1,6 @@
 from openai import OpenAI
-from config import LLM_CONFIG
+from config import LLM_CONFIG,DB_CONFIG
+from db_manager import DBManager
 from data_pipeline import analyze_attendance
 
 # 初始化大模型客户端
@@ -27,7 +28,20 @@ def generate_study_plan(name,major,late_count,score,risk_level):
     except Exception as e:
         return f"AI诊断生成失败：{e}"
 
-# 2. 模块化独立测试入口（串联第 2 车间与第 3 车间）
+# 新增函数 2：将生成的 AI 报告写入 MySQL 数据库
+def save_report_to_db(name,major,risk_level,advice):
+    # 实例化大管家
+    db = DBManager(DB_CONFIG)
+    sql = """
+    INSERT INTO ai_reports (student_name, major, risk_level, advice)
+    VALUES (%s, %s, %s, %s);
+    """
+    db.execute_update(sql,(name,major,risk_level,advice))
+    db.close()
+    print(f"✅ 【{name}】的 AI 诊断报告已成功存入 MySQL 数据库！")
+
+
+# 3. 模块化独立测试入口（串联第 2 车间与第 3 车间）
 if __name__ == "__main__":  # 如果运行的是当前文件就跑下边缩进的所有代码
     alert_df = analyze_attendance()
     high_risk_df = alert_df[alert_df["risk_level"] == "高风险"]
@@ -44,4 +58,12 @@ if __name__ == "__main__":  # 如果运行的是当前文件就跑下边缩进�
             risk_level=row["risk_level"]
         )
         print(plan)
+        if not plan.startswith("AI诊断生成失败"):
+            save_report_to_db(
+                name=row["name"],
+                major=row["major"],
+                risk_level=row["risk_level"],
+                advice=plan
+            )
         print("\n")
+
